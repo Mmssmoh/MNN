@@ -1,0 +1,68 @@
+name: Build Wan Android ARM64
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout MNN
+        uses: actions/checkout@v4
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager "ndk;27.2.12479018"
+
+      - name: Build MNN Wan for Android ARM64
+        shell: bash
+        run: |
+          export ANDROID_NDK="$ANDROID_HOME/ndk/27.2.12479018"
+
+          mkdir -p project/android/build_64
+          cd project/android/build_64
+
+          ../build_64.sh \
+            -DMNN_LOW_MEMORY=ON \
+            -DMNN_BUILD_DIFFUSION=ON \
+            -DMNN_BUILD_LLM=ON \
+            -DMNN_OPENCL=ON \
+            -DMNN_BUILD_OPENCV=ON \
+            -DMNN_IMGCODECS=ON \
+            -DMNN_SEP_BUILD=OFF \
+            -DMNN_SUPPORT_TRANSFORMER_FUSE=ON
+
+      - name: Collect Wan files
+        shell: bash
+        run: |
+          mkdir -p wan-android
+
+          WAN_BIN="$(find project/android/build_64 \
+            -type f -name 'wan_diffusion_demo' | head -n 1)"
+
+          if [ -z "$WAN_BIN" ]; then
+            echo "wan_diffusion_demo was not produced"
+            find project/android/build_64 -type f | sort
+            exit 1
+          fi
+
+          cp "$WAN_BIN" wan-android/
+          chmod +x wan-android/wan_diffusion_demo
+
+          find project/android/build_64 \
+            -type f -name '*.so' \
+            -exec cp {} wan-android/ \;
+
+          echo "=== Android Wan package ==="
+          ls -lah wan-android/
+
+      - name: Upload Wan Android package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnn-wan-android-arm64
+          path: wan-android/
+          retention-days: 7
